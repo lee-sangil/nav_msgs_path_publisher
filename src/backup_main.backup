@@ -1,0 +1,164 @@
+#include <ros/ros.h>
+#include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/PointStamped.h>
+#include <mavros_msgs/PositionTarget.h>
+#include <gazebo_msgs/LinkStates.h>
+#include <nav_msgs/Path.h>
+#include <tf/transform_broadcaster.h>
+
+#define PATH_LENGTH 500
+
+bool updated_path = false;
+bool updated_setpoint = false;
+
+geometry_msgs::PoseStamped pose;
+nav_msgs::Path path_current;
+nav_msgs::Path path_setpoint;
+
+std::vector<geometry_msgs::PoseStamped> current_poses(PATH_LENGTH);
+std::vector<geometry_msgs::PoseStamped> setpoint_poses(PATH_LENGTH);
+geometry_msgs::PointStamped setpointPoint;
+
+bool initialized_path = false;
+bool initialized_setpoint = false;
+int data_num_index_path = 0;
+int data_num_index_setpoint = 0;
+
+tf::TransformBroadcaster *br;
+tf::Transform transform;
+tf::Transform transform_links;
+int link_number = 0;
+
+void link_cb(const gazebo_msgs::LinkStates::ConstPtr& msg)
+{
+	for(int i=0; i<link_number; i++)
+	{
+		std::string link_fullname = msg->name[i];
+		std::string delimiter = "::";
+		std::string link_name = link_fullname.erase(0, link_fullname.find(delimiter)+delimiter.length());
+		//std::cout << "fullname : " << link_fullname << std::endl;
+		//std::cout << "linkname : " << link_name << std::endl;
+		transform_links.setOrigin( tf::Vector3(msg->pose[i].position.x, msg->pose[i].position.y, msg->pose[i].position.z) );
+		transform_links.setRotation(tf::Quaternion(msg->pose[i].orientation.x, msg->pose[i].orientation.y, msg->pose[i].orientation.z, msg->pose[i].orientation.w));
+		br->sendTransform(tf::StampedTransform(transform_links, ros::Time::now(), "map", link_name));
+	}
+}
+
+void path_cb(const geometry_msgs::PoseStamped::ConstPtr& msg)
+{
+	if(!initialized_path)
+	{
+		for(int i=data_num_index_path; i<PATH_LENGTH; i++)
+		{
+			if(i<=data_num_index_path)
+			{
+				current_poses.at(i).pose = msg->pose;
+			}
+			else
+			{
+				current_poses.at(i).pose = current_poses.at(i-1).pose;
+			}
+		}
+		if(++data_num_index_path==PATH_LENGTH) initialized_path = true;
+	}
+	else
+	{
+		for(int i=0; i<PATH_LENGTH-1; i++)
+		{
+			current_poses.at(i).pose = current_poses.at(i+1).pose;
+		}
+		current_poses.at(PATH_LENGTH-1).pose = msg->pose;
+	}
+	path_current.poses = current_poses;
+	path_current.header.frame_id = "fcu";
+
+	transform.setOrigin( tf::Vector3(msg->pose.position.x, msg->pose.position.y, msg->pose.position.z) );
+	transform.setRotation(tf::Quaternion(msg->pose.orientation.x, msg->pose.orientation.y, msg->pose.orientation.z, msg->pose.orientation.w));
+	updated_path = true;
+}
+
+void setpoint_cb(const mavros_msgs::PositionTarget::ConstPtr& msg)
+{
+	if(!initialized_setpoint)
+	{
+		for(int i=data_num_index_setpoint; i<PATH_LENGTH; i++)
+		{
+			if(i<=data_num_index_setpoint)
+			{
+				setpoint_poses.at(i).pose.position = msg->position;
+			}
+			else
+			{
+				setpoint_poses.at(i).pose.position = setpoint_poses.at(i-1).pose.position;
+			}
+		}
+		if(++data_num_index_setpoint==PATH_LENGTH) initialized_setpoint = true;
+	}
+	else
+	{
+		for(int i=0; i<PATH_LENGTH-1; i++)
+		{
+			setpoint_poses.at(i).pose = setpoint_poses.at(i+1).pose;
+		}
+		setpoint_poses.at(PATH_LENGTH-1).pose.position = msg->position;
+	}
+	path_setpoint.poses = setpoint_poses;
+	path_setpoint.header.frame_id = "fcu";
+
+	setpointPoint.header.frame_id = "fcu";
+	setpointPoint.point = msg->position;
+	updated_setpoint = true;
+}
+
+int main(int argc, char **argv)
+{
+    ros::init(argc, argv, "trajectory_drawer");
+    ros::NodeHandle nh;
+
+	nh.getParam("link_number", link_number);
+	std::cout << "link_number : " << link_number << std::endl;
+
+	br = new tf::TransformBroadcaster;
+
+    ros::Subscriber state_sub = nh.subscribe<geometry_msgs::PoseStamped>
+            ("mavros/mocap/pose", 10, path_cb);
+    ros::Subscriber setpoint_sub = nh.subscribe<mavros_msgs::PositionTarget>
+            ("mavros/setpoint_raw/local", 10, setpoint_cb);
+	ros::Subscriber link_sub = nh.subscribe<gazebo_msgs::LinkStates>
+			("gazebo/link_states", 10, link_cb);
+
+    ros::Publisher path_pub = nh.advertise<nav_msgs::Path>
+            ("syd/current_path", 10);
+    ros::Publisher setpoint_pub = nh.advertise<nav_msgs::Path>
+            ("syd/setpoint_path", 10);
+	ros::Publisher setpointPoint_pub = nh.advertise<geometry_msgs::PointStamped>
+			("syd/setpointPoint", 10);
+
+    ros::Rate rate(100.0);
+
+    while(ros::ok())
+	{
+		ros::spinOnce();
+		if(updated_path)
+		{
+			path_pub.publish(path_current);
+			br->sendTransform(tf::StampedTransform(transform, ros::Time::now(), "map", "base_link"));
+			br->sendTransform(tf::StampedTransform(transform, ros::Time::now(), "map", "base_link_inertia"));
+			br->sendTransform(tf::StampedTransform(transform, ros::Time::now(), "map", "sonar_link"));
+			transform.setOrigin( tf::Vector3(0.0, 0.0, 0.0) );
+			transform.setRotation(tf::Quaternion(0.0, 0.0, 0.0, 1.0));
+			br->sendTransform(tf::StampedTransform(transform, ros::Time::now(), "map", "fcu"));
+		}
+		if(updated_setpoint) 
+		{
+			setpoint_pub.publish(path_setpoint);
+			setpointPoint_pub.publish(setpointPoint);
+		}
+		updated_path = false;
+		updated_setpoint = false;
+        rate.sleep();
+    }
+	delete br;
+    return 0;
+}
+
