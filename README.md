@@ -6,7 +6,8 @@ Visualization tools for crazyflie
 ##Contributors##
 * Hoseong Seo (hosung9009@gmail.com , original author)
 * Clark Youngdong Son (clark.y.d.son@gmail.com , original author)
-* Dohyun Jang (dohyun@snu.ac.kr , last modified)
+* Dohyun Jang (dohyun@snu.ac.kr , modified)
+* Sangil Lee (dohyun@snu.ac.kr , last modified)
 
 ##Usage
 It is only for crazyflie_ros
