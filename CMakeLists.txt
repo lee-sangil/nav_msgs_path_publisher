@@ -8,7 +8,7 @@ find_package(catkin REQUIRED COMPONENTS roscpp geometry_msgs cmake_modules nav_m
 #  tf
 #	cmake_modules
 #)
-#set(CMAKE_CXX_FLAGS "-std=c++11 ${CMAKE_CXX_FLAGS}")
+set(CMAKE_CXX_FLAGS "-std=c++11 -ggdb ${CMAKE_CXX_FLAGS}")
 find_package(Eigen_REQUIRED)
 
 catkin_package(

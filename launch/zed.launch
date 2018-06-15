@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<launch>
+
+  <arg name="file" default="~/Downloads/a.bag"/>
+
+  <node pkg="rviz" type="rviz" name="rviz_mpc" output="screen" args="-d $(find crazyflie_rviz)/crazyflie_rviz_zed.rviz -f world"/>
+  <node pkg="rosbag" type="play" name="rosbag" args="$(arg file)"/>
+  <!--node pkg="crazyflie_rviz" type="crazyflie_rviz" launch-prefix="gdb -ex run -args" name="crazyflie_rviz" output="screen"/-->
+  <node pkg="crazyflie_rviz" type="crazyflie_rviz" name="crazyflie_rviz" output="screen"/>
+
+</launch>
